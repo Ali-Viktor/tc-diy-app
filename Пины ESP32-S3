@@ -1,0 +1,13 @@
+🎛️ Пины ESP32-S3
+Функция	Пин
+LTC Output (3.5mm L)	GPIO 17 (DAC1)
+LTC Input (Jam Sync)	GPIO 36 (ADC)
+Mic Input (I2S)	GPIO 38 (DATA), 39 (WS), 40 (SCK)
+OLED SDA	GPIO 21
+OLED SCL	GPIO 22
+DS3231 SDA	GPIO 21
+DS3231 SCL	GPIO 22
+Encoder A	GPIO 32
+Encoder B	GPIO 33
+Encoder Button	GPIO 25
+Battery ADC	GPIO 35
