@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TC-DIY Control Panel</title>
+    <style>
+        body {
+            background-color: #121212; color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex; flex-direction: column; align-items: center;
+            margin: 0; padding: 20px;
+        }
+        .card {
+            background: #1e1e1e; border-radius: 16px; padding: 20px;
+            width: 100%; max-width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+        h1 { font-size: 24px; margin-top: 0; color: #00d2ff; }
+        .timecode {
+            font-size: 42px; font-weight: bold; font-family: monospace;
+            margin: 20px 0; letter-spacing: 2px; color: #ff3b30;
+        }
+        .btn {
+            background: #007aff; color: white; border: none;
+            padding: 12px 24px; font-size: 16px; border-radius: 8px;
+            cursor: pointer; width: 100%; font-weight: bold; transition: 0.2s;
+        }
+        .btn:hover { background: #0056b3; }
+        .btn:disabled { background: #555; cursor: not-allowed; }
+        .setting-group {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 15px; padding-top: 15px; border-top: 1px solid #333;
+        }
+        select {
+            background: #333; color: white; border: 1px solid #555;
+            padding: 8px; border-radius: 6px; font-size: 16px; outline: none;
+        }
+        .status { margin-top: 15px; font-size: 14px; color: #aaa; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>TC-DIY Dashboard</h1>
+        <button id="connectBtn" class="btn">Connect via Bluetooth</button>
+        
+        <div class="timecode" id="tcDisplay">--:--:--:--</div>
+        
+        <div class="setting-group">
+            <span>Battery:</span>
+            <span id="batDisplay" style="font-weight: bold; color: #34c759;">--%</span>
+        </div>
+
+        <div class="setting-group">
+            <span>Frame Rate:</span>
+            <select id="fpsSelect" disabled>
+                <option value="0">23.98 fps</option>
+                <option value="1">24 fps</option>
+                <option value="2">25 fps</option>
+                <option value="3">29.97 fps</option>
+                <option value="4">29.97 DF</option>
+                <option value="5">30 fps</option>
+                <option value="8">50 fps</option>
+                <option value="11">60 fps</option>
+            </select>
+        </div>
+
+        <div class="setting-group">
+            <span>Mode:</span>
+            <select id="modeSelect" disabled>
+                <option value="0">Master Run</option>
+                <option value="1">Auto Jam (Slave)</option>
+                <option value="2">Jam Once & Lock</option>
+            </select>
+        </div>
+
+        <div class="status" id="statusText">Status: Disconnected</div>
+    </div>
+
+    <script>
+        const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        const CHAR_TC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
+        const CHAR_BAT_UUID = "16962f9a-c944-46b5-8272-9b2f293b1602";
+        const CHAR_FPS_UUID = "828917c1-ea55-4d4a-a66e-fd202cea0645";
+        const CHAR_MODE_UUID = "d86241ed-d56b-4e6f-ac34-0f2c41ea41a2";
+
+        let bleDevice, bleServer;
+        let fpsChar, modeChar;
+
+        const connectBtn = document.getElementById('connectBtn');
+        const tcDisplay = document.getElementById('tcDisplay');
+        const batDisplay = document.getElementById('batDisplay');
+        const fpsSelect = document.getElementById('fpsSelect');
+        const modeSelect = document.getElementById('modeSelect');
+        const statusText = document.getElementById('statusText');
+
+        connectBtn.addEventListener('click', async () => {
+            try {
+                statusText.innerText = "Requesting Bluetooth Device...";
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'TC-DIY' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+                statusText.innerText = "Connecting to GATT Server...";
+                bleServer = await bleDevice.gatt.connect();
+
+                statusText.innerText = "Getting Service...";
+                const service = await bleServer.getPrimaryService(SERVICE_UUID);
+
+                // --- Subscribe to Timecode ---
+                const tcChar = await service.getCharacteristic(CHAR_TC_UUID);
+                await tcChar.startNotifications();
+                tcChar.addEventListener('characteristicvaluechanged', (e) => {
+                    let decoder = new TextDecoder('utf-8');
+                    tcDisplay.innerText = decoder.decode(e.target.value);
+                });
+
+                // --- Subscribe to Battery ---
+                const batChar = await service.getCharacteristic(CHAR_BAT_UUID);
+                await batChar.startNotifications();
+                batChar.addEventListener('characteristicvaluechanged', (e) => {
+                    batDisplay.innerText = e.target.value.getUint8(0) + "%";
+                });
+
+                // --- Get Writable Characteristics ---
+                fpsChar = await service.getCharacteristic(CHAR_FPS_UUID);
+                modeChar = await service.getCharacteristic(CHAR_MODE_UUID);
+
+                // Enable UI
+                fpsSelect.disabled = false;
+                modeSelect.disabled = false;
+                connectBtn.innerText = "Connected";
+                connectBtn.style.background = "#34c759";
+                statusText.innerText = "Status: Connected & Synced";
+
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "Error: " + error.message;
+            }
+        });
+
+        function onDisconnected() {
+            statusText.innerText = "Status: Disconnected";
+            connectBtn.innerText = "Connect via Bluetooth";
+            connectBtn.style.background = "#007aff";
+            fpsSelect.disabled = true;
+            modeSelect.disabled = true;
+        }
+
+        // Send new settings to ESP32
+        fpsSelect.addEventListener('change', async (e) => {
+            if (!fpsChar) return;
+            let val = new Uint8Array([parseInt(e.target.value)]);
+            await fpsChar.writeValue(val);
+        });
+
+        modeSelect.addEventListener('change', async (e) => {
+            if (!modeChar) return;
+            let val = new Uint8Array([parseInt(e.target.value)]);
+            await modeChar.writeValue(val);
+        });
+    </script>
+</body>
+</html>
